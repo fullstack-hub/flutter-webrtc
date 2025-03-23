@@ -29,6 +29,7 @@ public class DeviceOrientationManager {
   private final int sensorOrientation;
   private PlatformChannel.DeviceOrientation lastOrientation;
   private BroadcastReceiver broadcastReceiver;
+  private boolean isReceiverRegistered = false; // 등록 상태 추적
 
   /** Factory method to create a device orientation manager. */
   @NonNull
@@ -46,7 +47,7 @@ public class DeviceOrientationManager {
   }
 
   public void start() {
-    if (broadcastReceiver != null) {
+    if (broadcastReceiver != null && isReceiverRegistered) {
       return;
     }
     broadcastReceiver =
@@ -57,22 +58,31 @@ public class DeviceOrientationManager {
           }
         };
     if (activity != null) {
-      activity.registerReceiver(broadcastReceiver, orientationIntentFilter);
-      broadcastReceiver.onReceive(activity, null);
+      try {
+        activity.registerReceiver(broadcastReceiver, orientationIntentFilter);
+        isReceiverRegistered = true;
+        broadcastReceiver.onReceive(activity, null);
+      } catch (Exception e) {
+        Log.e(TAG, "Failed to register BroadcastReceiver: " + e.getMessage());
+      }
     } else {
       Log.w(TAG, "Activity is null, skipping BroadcastReceiver registration");
-      // 기본 방향으로 초기화 (선택적)
-      handleUIOrientationChange();
+      handleUIOrientationChange(); // 기본 방향 초기화
     }
   }
 
   /** Stops listening for orientation updates. */
   public void stop() {
-    if (broadcastReceiver == null) {
+    if (broadcastReceiver == null || !isReceiverRegistered) {
       return;
     }
     if (activity != null) {
-      activity.unregisterReceiver(broadcastReceiver);
+      try {
+        activity.unregisterReceiver(broadcastReceiver);
+        isReceiverRegistered = false;
+      } catch (Exception e) {
+        Log.e(TAG, "Failed to unregister BroadcastReceiver: " + e.getMessage());
+      }
     } else {
       Log.w(TAG, "Activity is null, cannot unregister BroadcastReceiver");
     }
@@ -85,9 +95,6 @@ public class DeviceOrientationManager {
     return this.lastOrientation;
   }
 
-  /**
-   * Handles orientation changes based on change events triggered by the OrientationIntentFilter.
-   */
   @VisibleForTesting
   void handleUIOrientationChange() {
     PlatformChannel.DeviceOrientation orientation = getUIOrientation();
@@ -105,9 +112,9 @@ public class DeviceOrientationManager {
   @SuppressWarnings("deprecation")
   @VisibleForTesting
   PlatformChannel.DeviceOrientation getUIOrientation() {
-    if (activity == null) {
-      Log.w(TAG, "Activity is null, returning default orientation");
-      return PlatformChannel.DeviceOrientation.PORTRAIT_UP; // 기본값 반환
+    if (activity == null || getDisplay() == null) {
+      Log.w(TAG, "Activity or Display is null, returning default orientation");
+      return PlatformChannel.DeviceOrientation.PORTRAIT_UP;
     }
     final int rotation = getDisplay().getRotation();
     final int orientation = activity.getResources().getConfiguration().orientation;
@@ -155,7 +162,7 @@ public class DeviceOrientationManager {
   int getDeviceDefaultOrientation() {
     if (activity == null) {
       Log.w(TAG, "Activity is null, assuming PORTRAIT as default orientation");
-      return Configuration.ORIENTATION_PORTRAIT; // 기본값 반환
+      return Configuration.ORIENTATION_PORTRAIT;
     }
     Configuration config = activity.getResources().getConfiguration();
     int rotation = getDisplay().getRotation();
@@ -174,8 +181,7 @@ public class DeviceOrientationManager {
   Display getDisplay() {
     if (activity == null) {
       Log.w(TAG, "Activity is null, cannot get Display");
-      // 기본 Display를 반환하거나 예외 처리 필요 (여기서는 null 반환 방지)
-      return null; // 주의: 이후 로직에서 null 체크 필요
+      return null;
     }
     return ((WindowManager) activity.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();
   }
