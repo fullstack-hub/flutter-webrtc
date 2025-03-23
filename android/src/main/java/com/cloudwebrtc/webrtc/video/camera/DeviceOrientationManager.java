@@ -29,7 +29,6 @@ public class DeviceOrientationManager {
   private final int sensorOrientation;
   private PlatformChannel.DeviceOrientation lastOrientation;
   private BroadcastReceiver broadcastReceiver;
-  private boolean isReceiverRegistered = false; // 등록 상태 추적
 
   /** Factory method to create a device orientation manager. */
   @NonNull
@@ -47,7 +46,7 @@ public class DeviceOrientationManager {
   }
 
   public void start() {
-    if (broadcastReceiver != null && isReceiverRegistered) {
+    if (broadcastReceiver != null) {
       return;
     }
     broadcastReceiver =
@@ -60,10 +59,10 @@ public class DeviceOrientationManager {
     if (activity != null) {
       try {
         activity.registerReceiver(broadcastReceiver, orientationIntentFilter);
-        isReceiverRegistered = true;
         broadcastReceiver.onReceive(activity, null);
       } catch (Exception e) {
         Log.e(TAG, "Failed to register BroadcastReceiver: " + e.getMessage());
+        broadcastReceiver = null; // 실패 시 null로 설정
       }
     } else {
       Log.w(TAG, "Activity is null, skipping BroadcastReceiver registration");
@@ -73,13 +72,12 @@ public class DeviceOrientationManager {
 
   /** Stops listening for orientation updates. */
   public void stop() {
-    if (broadcastReceiver == null || !isReceiverRegistered) {
+    if (broadcastReceiver == null) {
       return;
     }
     if (activity != null) {
       try {
         activity.unregisterReceiver(broadcastReceiver);
-        isReceiverRegistered = false;
       } catch (Exception e) {
         Log.e(TAG, "Failed to unregister BroadcastReceiver: " + e.getMessage());
       }
@@ -87,6 +85,11 @@ public class DeviceOrientationManager {
       Log.w(TAG, "Activity is null, cannot unregister BroadcastReceiver");
     }
     broadcastReceiver = null;
+  }
+
+  /** Ensure cleanup on Activity destruction */
+  public void cleanup() {
+    stop(); // 명시적 정리 호출
   }
 
   /** @return the last received UI orientation. */
