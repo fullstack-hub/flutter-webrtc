@@ -14,7 +14,6 @@ import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 import io.flutter.embedding.engine.systemchannels.PlatformChannel;
 import io.flutter.embedding.engine.systemchannels.PlatformChannel.DeviceOrientation;
-import android.util.Log;
 
 /**
  * Support class to help to determine the media orientation based on the orientation of the device.
@@ -23,7 +22,6 @@ public class DeviceOrientationManager {
 
   private static final IntentFilter orientationIntentFilter =
       new IntentFilter(Intent.ACTION_CONFIGURATION_CHANGED);
-  private static final String TAG = "DeviceOrientationManager";
 
   private final Activity activity;
   private final int sensorOrientation;
@@ -56,18 +54,8 @@ public class DeviceOrientationManager {
             handleUIOrientationChange();
           }
         };
-    if (activity != null) {
-      try {
-        activity.registerReceiver(broadcastReceiver, orientationIntentFilter);
-        broadcastReceiver.onReceive(activity, null);
-      } catch (Exception e) {
-        Log.e(TAG, "Failed to register BroadcastReceiver: " + e.getMessage());
-        broadcastReceiver = null; // 실패 시 null로 설정
-      }
-    } else {
-      Log.w(TAG, "Activity is null, skipping BroadcastReceiver registration");
-      handleUIOrientationChange(); // 기본 방향 초기화
-    }
+    activity.registerReceiver(broadcastReceiver, orientationIntentFilter);
+    broadcastReceiver.onReceive(activity, null);
   }
 
   /** Stops listening for orientation updates. */
@@ -75,22 +63,10 @@ public class DeviceOrientationManager {
     if (broadcastReceiver == null) {
       return;
     }
-    if (activity != null) {
-      try {
-        activity.unregisterReceiver(broadcastReceiver);
-      } catch (Exception e) {
-        Log.e(TAG, "Failed to unregister BroadcastReceiver: " + e.getMessage());
-      }
-    } else {
-      Log.w(TAG, "Activity is null, cannot unregister BroadcastReceiver");
-    }
+    activity.unregisterReceiver(broadcastReceiver);
     broadcastReceiver = null;
   }
 
-  /** Ensure cleanup on Activity destruction */
-  public void cleanup() {
-    stop(); // 명시적 정리 호출
-  }
 
   /** @return the last received UI orientation. */
   @Nullable
@@ -98,27 +74,27 @@ public class DeviceOrientationManager {
     return this.lastOrientation;
   }
 
+  /**
+   * Handles orientation changes based on change events triggered by the OrientationIntentFilter.
+   *
+   * <p>This method is visible for testing purposes only and should never be used outside this
+   * class.
+   */
   @VisibleForTesting
   void handleUIOrientationChange() {
     PlatformChannel.DeviceOrientation orientation = getUIOrientation();
     handleOrientationChange(orientation, lastOrientation);
     lastOrientation = orientation;
   }
-
   @VisibleForTesting
   static void handleOrientationChange(
       DeviceOrientation newOrientation,
       DeviceOrientation previousOrientation) {
-    // 기존 로직 유지
   }
 
   @SuppressWarnings("deprecation")
   @VisibleForTesting
   PlatformChannel.DeviceOrientation getUIOrientation() {
-    if (activity == null || getDisplay() == null) {
-      Log.w(TAG, "Activity or Display is null, returning default orientation");
-      return PlatformChannel.DeviceOrientation.PORTRAIT_UP;
-    }
     final int rotation = getDisplay().getRotation();
     final int orientation = activity.getResources().getConfiguration().orientation;
 
@@ -142,15 +118,28 @@ public class DeviceOrientationManager {
     }
   }
 
+  /**
+   * Calculates the sensor orientation based on the supplied angle.
+   *
+   * <p>This method is visible for testing purposes only and should never be used outside this
+   * class.
+   *
+   * @param angle Orientation angle.
+   * @return The sensor orientation based on the supplied angle.
+   */
   @VisibleForTesting
   PlatformChannel.DeviceOrientation calculateSensorOrientation(int angle) {
     final int tolerance = 45;
     angle += tolerance;
 
+    // Orientation is 0 in the default orientation mode. This is portrait-mode for phones
+    // and landscape for tablets. We have to compensate for this by calculating the default
+    // orientation, and apply an offset accordingly.
     int defaultDeviceOrientation = getDeviceDefaultOrientation();
     if (defaultDeviceOrientation == Configuration.ORIENTATION_LANDSCAPE) {
       angle += 90;
     }
+    // Determine the orientation
     angle = angle % 360;
     return new PlatformChannel.DeviceOrientation[] {
           PlatformChannel.DeviceOrientation.PORTRAIT_UP,
@@ -161,12 +150,16 @@ public class DeviceOrientationManager {
         [angle / 90];
   }
 
+  /**
+   * Gets the default orientation of the device.
+   *
+   * <p>This method is visible for testing purposes only and should never be used outside this
+   * class.
+   *
+   * @return The default orientation of the device.
+   */
   @VisibleForTesting
   int getDeviceDefaultOrientation() {
-    if (activity == null) {
-      Log.w(TAG, "Activity is null, assuming PORTRAIT as default orientation");
-      return Configuration.ORIENTATION_PORTRAIT;
-    }
     Configuration config = activity.getResources().getConfiguration();
     int rotation = getDisplay().getRotation();
     if (((rotation == Surface.ROTATION_0 || rotation == Surface.ROTATION_180)
@@ -179,13 +172,17 @@ public class DeviceOrientationManager {
     }
   }
 
+  /**
+   * Gets an instance of the Android {@link android.view.Display}.
+   *
+   * <p>This method is visible for testing purposes only and should never be used outside this
+   * class.
+   *
+   * @return An instance of the Android {@link android.view.Display}.
+   */
   @SuppressWarnings("deprecation")
   @VisibleForTesting
   Display getDisplay() {
-    if (activity == null) {
-      Log.w(TAG, "Activity is null, cannot get Display");
-      return null;
-    }
     return ((WindowManager) activity.getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();
   }
 }
